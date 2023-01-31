@@ -24,6 +24,7 @@ OP_PUSH = iota()
 OP_PLUS = iota()
 OP_MINUS = iota()
 OP_DUMP = iota()
+OP_EQUAL = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -37,6 +38,9 @@ def minus():
 
 def dump():
     return (OP_DUMP, )
+
+def equal():
+    return (OP_EQUAL, )
 
 def call_cmd(cmd) -> bool:
     print("[CMD] ", " ".join(cmd))
@@ -69,7 +73,7 @@ def lines_from_file(file_name) -> list:
 def simulate_program(program):
     stack = []
     for op in program:
-        if COUNT_OPS != 4: 
+        if COUNT_OPS != 5: 
             raise ExhaustiveHandling()
 
         if op[0] == OP_PUSH:
@@ -85,6 +89,10 @@ def simulate_program(program):
         elif op[0] == OP_DUMP:
             a = stack.pop()
             print(a)
+        elif op[0] == OP_EQUAL:
+            a = stack.pop()
+            b = stack.pop()
+            stack.append(int(a == b))
         else:
             raise Unreachable()
 
@@ -97,7 +105,7 @@ def compile_program(program, output_file_name):
     asm_program.extend(dump_function_lines)
     asm_program.append("_start:")
     for op in program:
-        if COUNT_OPS != 4: 
+        if COUNT_OPS != 5: 
             raise ExhaustiveHandling()
         
         if op[0] == OP_PUSH:
@@ -119,6 +127,15 @@ def compile_program(program, output_file_name):
             asm_program.append("\t;; -- dump --")
             asm_program.append("\tpop rdi")
             asm_program.append("\tcall dump")
+        elif op[0] == OP_EQUAL:
+            asm_program.append("\t;; -- equal --")
+            asm_program.append("\tmov rcx, 0")
+            asm_program.append("\tmov rdx, 1")
+            asm_program.append("\tpop rax")
+            asm_program.append("\tpop rbx")
+            asm_program.append("\tcmp rax, rbx")
+            asm_program.append("\tcmove rcx, rdx")
+            asm_program.append("\tpush rcx")
         else:
             raise Unreachable()
     asm_program.append("\tmov rax, 0x3c")
@@ -132,7 +149,7 @@ def compile_program(program, output_file_name):
 def parse_word_as_op(token):
     (file_path, row, col, word) = token
 
-    if (COUNT_OPS != 4):
+    if (COUNT_OPS != 5):
         raise ExhaustiveHandling("in parse_word_as_op")
 
     if word == "+":
@@ -141,6 +158,8 @@ def parse_word_as_op(token):
         return minus()
     elif word == ".":
         return dump()
+    elif word == "=":
+        return equal()
     else:
         try:
             return push(int(word))
