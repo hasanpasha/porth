@@ -129,7 +129,9 @@ def compile_program(program, output_file_name):
         return file_write_lines(output_file_name, asm_program,)
     return False
 
-def parse_word_as_op(word: str):
+def parse_word_as_op(token):
+    (file_path, row, col, word) = token
+
     if (COUNT_OPS != 4):
         raise ExhaustiveHandling("in parse_word_as_op")
 
@@ -140,11 +142,34 @@ def parse_word_as_op(word: str):
     elif word == ".":
         return dump()
     else:
-        return push(int(word))
+        try:
+            return push(int(word))
+        except ValueError as err:
+            print(f"{file_path}:{row}:{col}: {err}")
+            exit(1)
+
+
+
+def find_col(line, start, predicate):
+    while start < len(line) and not predicate(line[start]):
+        start += 1
+    return start
+
+def lex_line(line):
+    col = find_col(line, 0, lambda x: not x.isspace())
+    while col < len(line):
+        col_end = find_col(line, col, lambda x: x.isspace())
+        yield (col, line[col:col_end])
+        col = find_col(line, col_end, lambda x: not x.isspace())
+
+def lex_file(file_path) -> list:
+    with open(file_path, 'r') as f:
+        return [(file_path, row, col, token)
+                for (row, line) in enumerate(f.readlines())
+                for (col, token) in lex_line(line)]
 
 def load_program_from_file(file_path) -> bool:
-    with open(file_path, 'r') as f:
-        return [parse_word_as_op(word) for word in f.read().split()]
+    return [parse_word_as_op(token) for token in lex_file(file_path)]
 
 def usage(program_name):
     print(f"Usage: {program_name} <SUBCOMMAND> <input> [ARGS]")
