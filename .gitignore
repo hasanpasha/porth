@@ -1,3 +1,5 @@
 *.o
 __pycache__/
 *.swp
+test
+test.asm

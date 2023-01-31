@@ -5,11 +5,11 @@ import subprocess
 
 class Unrachable(Exception):
     def __init__(self, msg=""):
-        super().__init__("unreachable", msg)
+        super().__init__(f"unreachable: {msg}")
 
 class ExhaustiveHandling(Exception):
     def __init__(self, msg=""):
-        super().__init__("exhaustive handling", msg)
+        super().__init__(f"exhaustive handling: {msg}")
 
 iota_counter = 0
 def iota(reset=False):
@@ -147,27 +147,31 @@ def load_program_from_file(file_path) -> bool:
         return [parse_word_as_op(word) for word in f.read().split()]
 
 def usage(program_name):
-    print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
+    print(f"Usage: {program_name} <SUBCOMMAND> <input> [ARGS]")
     print("SUBCOMMANDS:")
     print("\tsim <file>\tSimulate the program.")
     print("\tcom <file>\tCompile the program.")
 
+def get_args():
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(description="Porth language compiler.")
+    subparser = parser.add_subparsers(help="select mode", dest="subcommand")
+    sim_parse = subparser.add_parser("sim", help="Simulate the program.")
+    com_parse = subparser.add_parser("com", help="Compile the program.")
+    parser.add_argument("file_path", metavar="file_path", type=str,
+                        help="The input file path")
+    return parser.parse_args()
+
+def get_program_name(program_path):
+    return "".join(program_path.split('/')[-1].split('.')[0:-1])
+
 if __name__ == '__main__':
-    argv = sys.argv
-    program_name = argv.pop(0)
-    if len(argv) < 1:
-        usage(program_name)
-        print("ERROR: no subcommand is provided")
-        exit(1)
-    subcommand = sys.argv.pop(0)
-
-    if len(argv) < 1:
-        print("ERROR: no input file.")
-        exit(1)
-    program_path = argv.pop(0)
-    program_name = "".join(program_path.split('/')[-1].split('.')[0:-1])
+    command_arguments = get_args()
+    program_path = command_arguments.file_path
+    subcommand = command_arguments.subcommand
+    program_name = get_program_name(program_path)
     
-
     if subcommand == "sim":
         program = load_program_from_file(program_path)
         if not program:
@@ -184,6 +188,3 @@ if __name__ == '__main__':
             exit(2)
         if not call_cmd(["ld", "-o", program_name, f"{program_name}.o", ]):
             exit(3)
-    else:
-        usage(program_name)
-        print(f"ERROR: unknown subcommand {subcommand}")
