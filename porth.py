@@ -148,8 +148,6 @@ def parse_word_as_op(token):
             print(f"{file_path}:{row}:{col}: {err}")
             exit(1)
 
-
-
 def find_col(line, start, predicate):
     while start < len(line) and not predicate(line[start]):
         start += 1
@@ -170,12 +168,6 @@ def lex_file(file_path) -> list:
 
 def load_program_from_file(file_path) -> bool:
     return [parse_word_as_op(token) for token in lex_file(file_path)]
-
-def usage(program_name):
-    print(f"Usage: {program_name} <SUBCOMMAND> <input> [ARGS]")
-    print("SUBCOMMANDS:")
-    print("\tsim <file>\tSimulate the program.")
-    print("\tcom <file>\tCompile the program.")
 
 def get_args():
     from argparse import ArgumentParser
