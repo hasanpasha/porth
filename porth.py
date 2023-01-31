@@ -129,44 +129,61 @@ def compile_program(program, output_file_name):
         return file_write_lines(output_file_name, asm_program,)
     return False
 
-program = [
-    push(34),
-    push(35),
-    plus(),
-    dump(),
-    push(11),
-    push(10),
-    minus(),
-    dump(),
-    push(99),
-    dump()
-]
+def parse_word_as_op(word: str):
+    if (COUNT_OPS != 4):
+        raise ExhaustiveHandling("in parse_word_as_op")
 
+    if word == "+":
+        return plus()
+    elif word == "-":
+        return minus()
+    elif word == ".":
+        return dump()
+    else:
+        return push(int(word))
 
-def usage():
-    print("Usage: porth <SUBCOMMAND> [ARGS]")
+def load_program_from_file(file_path) -> bool:
+    with open(file_path, 'r') as f:
+        return [parse_word_as_op(word) for word in f.read().split()]
+
+def usage(program_name):
+    print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
     print("SUBCOMMANDS:")
-    print("\tsim\tSimulate the program.")
-    print("\tcom\tCompile the program.")
+    print("\tsim <file>\tSimulate the program.")
+    print("\tcom <file>\tCompile the program.")
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        usage()
+    argv = sys.argv
+    program_name = argv.pop(0)
+    if len(argv) < 1:
+        usage(program_name)
         print("ERROR: no subcommand is provided")
         exit(1)
+    subcommand = sys.argv.pop(0)
 
-    subcommand = sys.argv[1]
+    if len(argv) < 1:
+        print("ERROR: no input file.")
+        exit(1)
+    program_path = argv.pop(0)
+    program_name = "".join(program_path.split('/')[-1].split('.')[0:-1])
+    
 
     if subcommand == "sim":
+        program = load_program_from_file(program_path)
+        if not program:
+            exit(-1)
         simulate_program(program)
 
     elif subcommand == "com":
-        if not (compile_program(program, "output.asm")):
+        program = load_program_from_file(program_path)
+        if not program:
+            exit(-1)
+        if not (compile_program(program, f"{program_name}.asm", )):
             exit(1)
-        if not call_cmd(["nasm", "-felf64", "output.asm",]):
+        if not call_cmd(["nasm", "-felf64", f"{program_name}.asm",]):
             exit(2)
-        if not call_cmd(["ld", "-o", "output", "output.o", ]):
+        if not call_cmd(["ld", "-o", program_name, f"{program_name}.o", ]):
             exit(3)
     else:
-        usage()
+        usage(program_name)
         print(f"ERROR: unknown subcommand {subcommand}")
