@@ -2,6 +2,8 @@
 
 import sys
 import subprocess
+from argparse import ArgumentParser
+from os import path
 
 class Unrachable(Exception):
     def __init__(self, msg=""):
@@ -25,6 +27,8 @@ OP_PLUS = iota()
 OP_MINUS = iota()
 OP_DUMP = iota()
 OP_EQUAL = iota()
+# OP_IF = iota()
+# OP_END = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -42,32 +46,31 @@ def dump():
 def equal():
     return (OP_EQUAL, )
 
-def call_cmd(cmd) -> bool:
-    print("[CMD] ", " ".join(cmd))
-    if subprocess.run(cmd).returncode == 0:
-        return True
-    else:
-        return False
+# def iff():
+#     return (OP_IF, )
+# 
+# def end():
+#     return (OP_END, )
 
-def file_write_lines(file_name, lines: list, *append_files) -> bool:
-    print(f"[PROC] writing to file {file_name}")
+def call_cmd(cmd, verbose=False):
+    if verbose:
+        print("[CMD] ", " ".join(cmd))
+    subprocess.run(cmd)
+
+def file_write_lines(file_name, lines: list) -> bool:
     with open(file_name, "w") as output:
-        if len(append_files) > 0:
-            for fn in append_files:
-                with open(fn, 'r') as f:
-                    output.write(f.read() + '\n')
         for line in lines:
             if output.write(line + '\n') != (len(line)+1):
                 return False
+        else:
+            return True
 
-    return True
-       
 def lines_from_file(file_name) -> list:
     with open(file_name, 'r') as f:
         lines = f.readlines()
         for i in range(0, len(lines)):
             lines[i] = lines[i].replace('\n', '')
-        return lines
+    return lines
 
 
 def simulate_program(program):
@@ -93,6 +96,10 @@ def simulate_program(program):
             a = stack.pop()
             b = stack.pop()
             stack.append(int(a == b))
+     #   elif op[0] == OP_IF:
+     #       NotImplemented
+     #   elif op[0] == OP_END:
+     #       NotImplemented
         else:
             raise Unreachable()
 
@@ -160,6 +167,10 @@ def parse_word_as_op(token):
         return dump()
     elif word == "=":
         return equal()
+    # elif word == "if":
+    #     return iff()
+    # elif word == "end":
+    #     return end()
     else:
         try:
             return push(int(word))
@@ -189,38 +200,56 @@ def load_program_from_file(file_path) -> bool:
     return [parse_word_as_op(token) for token in lex_file(file_path)]
 
 def get_args():
-    from argparse import ArgumentParser
-
     parser = ArgumentParser(description="Porth language compiler.")
+    
     subparser = parser.add_subparsers(help="select mode", dest="subcommand")
     sim_parse = subparser.add_parser("sim", help="Simulate the program.")
     com_parse = subparser.add_parser("com", help="Compile the program.")
+    com_parse.add_argument("-r", "--run", action="store_true",
+                           help="run the generated executable.")
+    com_parse.add_argument("-o", "--output", type=str,
+                           help="output path.")
+    com_parse.add_argument("-v", "--verbose", action="store_true",
+                           help="set verbosity.")
+
+    
     parser.add_argument("file_path", metavar="file_path", type=str,
                         help="The input file path")
     return parser.parse_args()
 
-def get_program_name(program_path):
-    return "".join(program_path.split('/')[-1].split('.')[0:-1])
+def get_file_info(source_path):
+    source_abs_path = path.abspath(source_path)
+    head, source_file = path.split(source_abs_path)
+    return (source_abs_path, head, source_file)
 
 if __name__ == '__main__':
     command_arguments = get_args()
-    program_path = command_arguments.file_path
+    source_path = command_arguments.file_path
     subcommand = command_arguments.subcommand
-    program_name = get_program_name(program_path)
     
+    source_abs_path, path_head, source_file = get_file_info(source_path)
+    
+    program = load_program_from_file(source_abs_path)
+    if not program:
+        exit(1)
+
     if subcommand == "sim":
-        program = load_program_from_file(program_path)
-        if not program:
-            exit(-1)
         simulate_program(program)
 
     elif subcommand == "com":
-        program = load_program_from_file(program_path)
-        if not program:
-            exit(-1)
-        if not (compile_program(program, f"{program_name}.asm", )):
-            exit(1)
-        if not call_cmd(["nasm", "-felf64", f"{program_name}.asm",]):
-            exit(2)
-        if not call_cmd(["ld", "-o", program_name, f"{program_name}.o", ]):
-            exit(3)
+        com_run = command_arguments.run
+        com_output = command_arguments.output
+        com_verbose = command_arguments.verbose
+
+        asm_path = path.join(path_head, f"{source_file}.asm")
+        object_path = path.join(path_head, f"{source_file}.o")
+        if com_output: 
+            exe_path, _, _ = get_file_info(com_output)
+        else:
+            exe_path = path.join(path_head, f"{source_file}.exe")
+
+        compile_program(program, asm_path)
+        call_cmd(["nasm", "-felf64", asm_path, ], verbose=com_verbose)
+        call_cmd(["ld", "-o", exe_path, object_path, ], verbose=com_verbose)
+        if com_run:
+            call_cmd([exe_path], verbose=com_verbose)
