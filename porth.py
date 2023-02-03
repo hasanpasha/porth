@@ -29,6 +29,7 @@ OP_DUMP = iota()
 OP_EQUAL = iota()
 OP_IF = iota()
 OP_END = iota()
+OP_ELSE = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -51,6 +52,9 @@ def iff():
 
 def end():
     return (OP_END, )
+
+def elze():
+    return (OP_ELSE, )
 
 def call_cmd(cmd, verbose=False):
     if verbose:
@@ -77,7 +81,7 @@ def simulate_program(program):
     stack = []
     ip = 0
     while ip < len(program):
-        if COUNT_OPS != 7: 
+        if COUNT_OPS != 8: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -107,7 +111,12 @@ def simulate_program(program):
             if a == 0:
                 assert len(op) >= 2, "`if` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to simulate it."
                 ip = op[1]
-            ip += 1
+            else:
+                ip += 1
+        elif op[0] == OP_ELSE:
+            assert len(op) >= 2, "`else` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to simulate it."
+            assert ip != op[1], "OOPS!!"
+            ip = op[1]
         elif op[0] == OP_END:
             ip += 1
         else:
@@ -122,7 +131,7 @@ def compile_program(program, output_file_name):
     asm_program.extend(dump_function_lines)
     asm_program.append("_start:")
     for ip in range(len(program)):
-        if COUNT_OPS != 7: 
+        if COUNT_OPS != 8: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -159,6 +168,11 @@ def compile_program(program, output_file_name):
             asm_program.append("\ttest rax, rax")
             assert len(op) >= 2, "`if` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to compile it."
             asm_program.append(f"\tjz addr_{op[1]}")
+        elif op[0] == OP_ELSE:
+            assert len(op) >= 2, "`else` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to compile it."
+            asm_program.append("\t;; -- else --")
+            asm_program.append(f"\tjmp addr_{op[1]}")
+            asm_program.append(f"addr_{ip+1}:")
         elif op[0] == OP_END:
             asm_program.append(f"addr_{ip}:")
         else:
@@ -174,7 +188,7 @@ def compile_program(program, output_file_name):
 def parse_word_as_op(token):
     (file_path, row, col, word) = token
 
-    if (COUNT_OPS != 7):
+    if (COUNT_OPS != 8):
         raise ExhaustiveHandling("in parse_word_as_op")
 
     if word == "+":
@@ -188,7 +202,9 @@ def parse_word_as_op(token):
     elif word == "if":
         return iff()
     elif word == "end":
-         return end()
+        return end()
+    elif word == "else":
+        return elze()
     else:
         try:
             return push(int(word))
@@ -200,14 +216,21 @@ def crossreference_program(program):
     stack = []
     for ip in range(len(program)):
         op = program[ip]
-        if COUNT_OPS != 7:
+        if COUNT_OPS != 8:
             raise ExhaustiveHandling("in crossreference_program. Keep in mind that not all of the ops need to be handled in here, only thos that form blocks.")
         if op[0] == OP_IF:
             stack.append(ip)
-        elif op[0] == OP_END:
+        elif op[0] == OP_ELSE:
             if_ip = stack.pop()
-            assert program[if_ip][0] == OP_IF, "End can only close if for now"
-            program[if_ip] = (OP_IF, ip)
+            assert program[if_ip][0] == OP_IF, "`else` can only close `if` for now"
+            program[if_ip] = (OP_IF, ip+1)
+            stack.append(ip)
+        elif op[0] == OP_END:
+            block_ip = stack.pop()
+            if program[block_ip][0] == OP_IF or program[block_ip][0] == OP_ELSE:
+                program[block_ip] = (program[block_ip][0], ip)
+            else:
+                assert False, "`end` can only close `if-else` for now"
     return program
 
 def find_col(line, start, predicate):
