@@ -5,7 +5,7 @@ import subprocess
 from argparse import ArgumentParser
 from os import path
 
-class Unrachable(Exception):
+class Unreachable(Exception):
     def __init__(self, msg=""):
         super().__init__(f"unreachable: {msg}")
 
@@ -27,8 +27,8 @@ OP_PLUS = iota()
 OP_MINUS = iota()
 OP_DUMP = iota()
 OP_EQUAL = iota()
-# OP_IF = iota()
-# OP_END = iota()
+OP_IF = iota()
+OP_END = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -46,11 +46,11 @@ def dump():
 def equal():
     return (OP_EQUAL, )
 
-# def iff():
-#     return (OP_IF, )
-# 
-# def end():
-#     return (OP_END, )
+def iff():
+    return (OP_IF, )
+
+def end():
+    return (OP_END, )
 
 def call_cmd(cmd, verbose=False):
     if verbose:
@@ -75,31 +75,41 @@ def lines_from_file(file_name) -> list:
 
 def simulate_program(program):
     stack = []
-    for op in program:
-        if COUNT_OPS != 5: 
+    ip = 0
+    while ip < len(program):
+        if COUNT_OPS != 7: 
             raise ExhaustiveHandling()
-
+        op = program[ip]
         if op[0] == OP_PUSH:
             stack.append(op[1])
+            ip += 1
         elif op[0] == OP_PLUS:
             a = stack.pop()
             b = stack.pop()
             stack.append(a + b)
+            ip += 1
         elif op[0] == OP_MINUS:
             a = stack.pop()
             b = stack.pop()
             stack.append(b - a)
+            ip += 1
         elif op[0] == OP_DUMP:
             a = stack.pop()
             print(a)
+            ip += 1
         elif op[0] == OP_EQUAL:
             a = stack.pop()
             b = stack.pop()
             stack.append(int(a == b))
-     #   elif op[0] == OP_IF:
-     #       NotImplemented
-     #   elif op[0] == OP_END:
-     #       NotImplemented
+            ip += 1
+        elif op[0] == OP_IF:
+            a = stack.pop()
+            if a == 0:
+                assert len(op) >= 2, "`if` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to simulate it."
+                ip = op[1]
+            ip += 1
+        elif op[0] == OP_END:
+            ip += 1
         else:
             raise Unreachable()
 
@@ -111,10 +121,10 @@ def compile_program(program, output_file_name):
     asm_program.append("global _start")
     asm_program.extend(dump_function_lines)
     asm_program.append("_start:")
-    for op in program:
-        if COUNT_OPS != 5: 
+    for ip in range(len(program)):
+        if COUNT_OPS != 7: 
             raise ExhaustiveHandling()
-        
+        op = program[ip]
         if op[0] == OP_PUSH:
             asm_program.append(f"\t;; -- push {op[1]} --")
             asm_program.append(f"\tpush {op[1]}")
@@ -143,6 +153,14 @@ def compile_program(program, output_file_name):
             asm_program.append("\tcmp rax, rbx")
             asm_program.append("\tcmove rcx, rdx")
             asm_program.append("\tpush rcx")
+        elif op[0] == OP_IF:
+            asm_program.append("\t;; -- if --")
+            asm_program.append("\tpop rax")
+            asm_program.append("\ttest rax, rax")
+            assert len(op) >= 2, "`if` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to compile it."
+            asm_program.append(f"\tjz addr_{op[1]}")
+        elif op[0] == OP_END:
+            asm_program.append(f"addr_{ip}:")
         else:
             raise Unreachable()
     asm_program.append("\tmov rax, 0x3c")
@@ -156,7 +174,7 @@ def compile_program(program, output_file_name):
 def parse_word_as_op(token):
     (file_path, row, col, word) = token
 
-    if (COUNT_OPS != 5):
+    if (COUNT_OPS != 7):
         raise ExhaustiveHandling("in parse_word_as_op")
 
     if word == "+":
@@ -167,16 +185,30 @@ def parse_word_as_op(token):
         return dump()
     elif word == "=":
         return equal()
-    # elif word == "if":
-    #     return iff()
-    # elif word == "end":
-    #     return end()
+    elif word == "if":
+        return iff()
+    elif word == "end":
+         return end()
     else:
         try:
             return push(int(word))
         except ValueError as err:
             print(f"{file_path}:{row}:{col}: {err}")
             exit(1)
+
+def crossreference_program(program):
+    stack = []
+    for ip in range(len(program)):
+        op = program[ip]
+        if COUNT_OPS != 7:
+            raise ExhaustiveHandling("in crossreference_program. Keep in mind that not all of the ops need to be handled in here, only thos that form blocks.")
+        if op[0] == OP_IF:
+            stack.append(ip)
+        elif op[0] == OP_END:
+            if_ip = stack.pop()
+            assert program[if_ip][0] == OP_IF, "End can only close if for now"
+            program[if_ip] = (OP_IF, ip)
+    return program
 
 def find_col(line, start, predicate):
     while start < len(line) and not predicate(line[start]):
@@ -192,12 +224,12 @@ def lex_line(line):
 
 def lex_file(file_path) -> list:
     with open(file_path, 'r') as f:
-        return [(file_path, row, col, token)
-                for (row, line) in enumerate(f.readlines())
-                for (col, token) in lex_line(line)]
+        for (row, line) in enumerate(f.readlines()):
+            for (col, token) in lex_line(line):
+                yield (file_path, row, col, token, )
 
-def load_program_from_file(file_path) -> bool:
-    return [parse_word_as_op(token) for token in lex_file(file_path)]
+def load_program_from_file(file_path):
+    return crossreference_program([parse_word_as_op(token) for token in lex_file(file_path)])
 
 def get_args():
     parser = ArgumentParser(description="Porth language compiler.")
