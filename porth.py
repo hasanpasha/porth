@@ -277,6 +277,8 @@ def find_col(line, start, predicate):
 def lex_line(line):
     col = find_col(line, 0, lambda x: not x.isspace())
     while col < len(line):
+        if line[col] == "#":
+            break
         col_end = find_col(line, col, lambda x: x.isspace())
         yield (col, line[col:col_end])
         col = find_col(line, col_end, lambda x: not x.isspace())
