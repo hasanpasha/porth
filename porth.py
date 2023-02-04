@@ -30,6 +30,7 @@ OP_EQUAL = iota()
 OP_IF = iota()
 OP_END = iota()
 OP_ELSE = iota()
+OP_DUP = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -56,6 +57,9 @@ def end():
 def elze():
     return (OP_ELSE, )
 
+def dup():
+    return (OP_DUP, )
+
 def call_cmd(cmd, verbose=False):
     if verbose:
         print("[CMD] ", " ".join(cmd))
@@ -81,7 +85,7 @@ def simulate_program(program):
     stack = []
     ip = 0
     while ip < len(program):
-        if COUNT_OPS != 8: 
+        if COUNT_OPS != 9: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -96,6 +100,11 @@ def simulate_program(program):
             a = stack.pop()
             b = stack.pop()
             stack.append(b - a)
+            ip += 1
+        elif op[0] == OP_DUP:
+            a = stack.pop()
+            stack.append(a)
+            stack.append(a)
             ip += 1
         elif op[0] == OP_DUMP:
             a = stack.pop()
@@ -131,7 +140,7 @@ def compile_program(program, output_file_name):
     asm_program.extend(dump_function_lines)
     asm_program.append("_start:")
     for ip in range(len(program)):
-        if COUNT_OPS != 8: 
+        if COUNT_OPS != 9: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -149,6 +158,11 @@ def compile_program(program, output_file_name):
             asm_program.append("\tpop rbx")
             asm_program.append("\tsub rbx, rax")
             asm_program.append("\tpush rbx")
+        elif op[0] == OP_DUP:
+            asm_program.append("\t;; -- dup --")
+            asm_program.append("\tpop rax");
+            asm_program.append("\tpush rax");
+            asm_program.append("\tpush rax");
         elif op[0] == OP_DUMP:
             asm_program.append("\t;; -- dump --")
             asm_program.append("\tpop rdi")
@@ -188,7 +202,7 @@ def compile_program(program, output_file_name):
 def parse_word_as_op(token):
     (file_path, row, col, word) = token
 
-    if (COUNT_OPS != 8):
+    if (COUNT_OPS != 9):
         raise ExhaustiveHandling("in parse_word_as_op")
 
     if word == "+":
@@ -205,6 +219,8 @@ def parse_word_as_op(token):
         return end()
     elif word == "else":
         return elze()
+    elif word == "dup":
+        return dup()
     else:
         try:
             return push(int(word))
@@ -216,7 +232,7 @@ def crossreference_program(program):
     stack = []
     for ip in range(len(program)):
         op = program[ip]
-        if COUNT_OPS != 8:
+        if COUNT_OPS != 9:
             raise ExhaustiveHandling("in crossreference_program. Keep in mind that not all of the ops need to be handled in here, only thos that form blocks.")
         if op[0] == OP_IF:
             stack.append(ip)
