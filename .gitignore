@@ -7,3 +7,5 @@ test.asm
 *.exe
 *.asm
 *.asm
+if
+*.asm
