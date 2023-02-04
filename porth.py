@@ -31,6 +31,7 @@ OP_IF = iota()
 OP_END = iota()
 OP_ELSE = iota()
 OP_DUP = iota()
+OP_GT = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -60,6 +61,9 @@ def elze():
 def dup():
     return (OP_DUP, )
 
+def gt():
+    return (OP_GT, )
+
 def call_cmd(cmd, verbose=False):
     if verbose:
         print("[CMD] ", " ".join(cmd))
@@ -85,7 +89,7 @@ def simulate_program(program):
     stack = []
     ip = 0
     while ip < len(program):
-        if COUNT_OPS != 9: 
+        if COUNT_OPS != 10: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -115,6 +119,11 @@ def simulate_program(program):
             b = stack.pop()
             stack.append(int(a == b))
             ip += 1
+        elif op[0] == OP_GT:
+            b = stack.pop()
+            a = stack.pop()
+            stack.append(int(a > b))
+            ip += 1
         elif op[0] == OP_IF:
             a = stack.pop()
             if a == 0:
@@ -140,7 +149,7 @@ def compile_program(program, output_file_name):
     asm_program.extend(dump_function_lines)
     asm_program.append("_start:")
     for ip in range(len(program)):
-        if COUNT_OPS != 9: 
+        if COUNT_OPS != 10: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -176,6 +185,15 @@ def compile_program(program, output_file_name):
             asm_program.append("\tcmp rax, rbx")
             asm_program.append("\tcmove rcx, rdx")
             asm_program.append("\tpush rcx")
+        elif op[0] == OP_GT:
+            asm_program.append("\t;; -- greator --")
+            asm_program.append("\tmov rcx, 0")
+            asm_program.append("\tmov rdx, 1")
+            asm_program.append("\tpop rax")
+            asm_program.append("\tpop rbx")
+            asm_program.append("\tcmp rbx, rax")
+            asm_program.append("\tcmovg rcx, rdx")
+            asm_program.append("\tpush rcx")
         elif op[0] == OP_IF:
             asm_program.append("\t;; -- if --")
             asm_program.append("\tpop rax")
@@ -202,7 +220,7 @@ def compile_program(program, output_file_name):
 def parse_word_as_op(token):
     (file_path, row, col, word) = token
 
-    if (COUNT_OPS != 9):
+    if (COUNT_OPS != 10):
         raise ExhaustiveHandling("in parse_word_as_op")
 
     if word == "+":
@@ -221,6 +239,8 @@ def parse_word_as_op(token):
         return elze()
     elif word == "dup":
         return dup()
+    elif word == ">":
+        return gt()
     else:
         try:
             return push(int(word))
@@ -232,7 +252,7 @@ def crossreference_program(program):
     stack = []
     for ip in range(len(program)):
         op = program[ip]
-        if COUNT_OPS != 9:
+        if COUNT_OPS != 10:
             raise ExhaustiveHandling("in crossreference_program. Keep in mind that not all of the ops need to be handled in here, only thos that form blocks.")
         if op[0] == OP_IF:
             stack.append(ip)
