@@ -1,3 +1,4 @@
-30 10 + 7 - 33 = if 
+// Simple if example
+30 10 + 7 - 33 = if // This is true
     696969 .
 end
