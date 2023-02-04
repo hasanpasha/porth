@@ -1,0 +1,4 @@
+100 while dup 0 > do
+    dup .
+    5 -
+end

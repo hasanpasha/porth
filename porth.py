@@ -32,6 +32,8 @@ OP_END = iota()
 OP_ELSE = iota()
 OP_DUP = iota()
 OP_GT = iota()
+OP_WHILE = iota()
+OP_DO = iota()
 COUNT_OPS = iota()
 
 def push(x):
@@ -64,6 +66,12 @@ def dup():
 def gt():
     return (OP_GT, )
 
+def wile():
+    return (OP_WHILE, )
+
+def do():
+    return (OP_DO, )
+
 def call_cmd(cmd, verbose=False):
     if verbose:
         print("[CMD] ", " ".join(cmd))
@@ -89,7 +97,7 @@ def simulate_program(program):
     stack = []
     ip = 0
     while ip < len(program):
-        if COUNT_OPS != 10: 
+        if COUNT_OPS != 12: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -133,10 +141,19 @@ def simulate_program(program):
                 ip += 1
         elif op[0] == OP_ELSE:
             assert len(op) >= 2, "`else` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to simulate it."
-            assert ip != op[1], "OOPS!!"
             ip = op[1]
         elif op[0] == OP_END:
+            assert len(op) >= 2, "`end` instruction does not have a reference to the next instruction to jump to. Please call crossreference_program() on the program before trying to simulate it."
+            ip = op[1]
+        elif op[0] == OP_WHILE:
             ip += 1
+        elif op[0] == OP_DO:
+            a = stack.pop()
+            if a == 0:
+                assert len(op) >= 2, "`do` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to simulate it."
+                ip = op[1]
+            else:
+                ip += 1
         else:
             raise Unreachable()
 
@@ -149,7 +166,8 @@ def compile_program(program, output_file_name):
     asm_program.extend(dump_function_lines)
     asm_program.append("_start:")
     for ip in range(len(program)):
-        if COUNT_OPS != 10: 
+        asm_program.append(f"addr_{ip}:")
+        if COUNT_OPS != 12: 
             raise ExhaustiveHandling()
         op = program[ip]
         if op[0] == OP_PUSH:
@@ -204,9 +222,21 @@ def compile_program(program, output_file_name):
             assert len(op) >= 2, "`else` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to compile it."
             asm_program.append("\t;; -- else --")
             asm_program.append(f"\tjmp addr_{op[1]}")
-            asm_program.append(f"addr_{ip+1}:")
         elif op[0] == OP_END:
-            asm_program.append(f"addr_{ip}:")
+            assert len(op) >= 2, "`end` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to compile it."
+            asm_program.append("\t;; -- end --")
+            if ip+1 != op[1]:
+                asm_program.append(f"\tjmp addr_{op[1]}")
+            if ip+1 >= len(program):
+                asm_program.append(f"addr_{ip+1}:")
+        elif op[0] == OP_WHILE:
+            asm_program.append("\t;; -- while --")
+        elif op[0] == OP_DO:
+            asm_program.append("\t;; -- do --")
+            asm_program.append("\tpop rax")
+            asm_program.append("\ttest rax, rax")
+            assert len(op) >= 2, "`do` instruction does not have a reference to the end of its block. Please call crossreference_program() on the program before trying to compile it."
+            asm_program.append(f"\tjz addr_{op[1]}")
         else:
             raise Unreachable()
     asm_program.append("\tmov rax, 0x3c")
@@ -220,7 +250,7 @@ def compile_program(program, output_file_name):
 def parse_word_as_op(token):
     (file_path, row, col, word) = token
 
-    if (COUNT_OPS != 10):
+    if (COUNT_OPS != 12):
         raise ExhaustiveHandling("in parse_word_as_op")
 
     if word == "+":
@@ -241,6 +271,10 @@ def parse_word_as_op(token):
         return dup()
     elif word == ">":
         return gt()
+    elif word == "while":
+        return wile()
+    elif word == "do":
+        return do()
     else:
         try:
             return push(int(word))
@@ -252,7 +286,7 @@ def crossreference_program(program):
     stack = []
     for ip in range(len(program)):
         op = program[ip]
-        if COUNT_OPS != 10:
+        if COUNT_OPS != 12:
             raise ExhaustiveHandling("in crossreference_program. Keep in mind that not all of the ops need to be handled in here, only thos that form blocks.")
         if op[0] == OP_IF:
             stack.append(ip)
@@ -265,8 +299,20 @@ def crossreference_program(program):
             block_ip = stack.pop()
             if program[block_ip][0] == OP_IF or program[block_ip][0] == OP_ELSE:
                 program[block_ip] = (program[block_ip][0], ip)
+                program[ip] = (OP_END, ip+1)
+            elif program[block_ip][0] == OP_DO:
+                assert len(program[block_ip]) >= 2, "`do` doesn't have a reference to `while`."
+                program[ip] = (OP_END, program[block_ip][1])
+                program[block_ip] = (OP_DO, ip+1)
             else:
-                assert False, "`end` can only close `if-else` for now"
+                assert False, "`end` can only close `if`, `else` or `do` for now"
+        elif op[0] == OP_WHILE:
+            stack.append(ip)
+        elif op[0] == OP_DO:
+            while_ip = stack.pop()
+            assert program[while_ip][0] == OP_WHILE, "`do` only words with `while` for now."
+            program[ip] = (OP_DO, while_ip)
+            stack.append(ip)
     return program
 
 def find_col(line, start, predicate):
